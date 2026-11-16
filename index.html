@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>砚台 · 小说创作工作台</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">砚台<span>小说创作工作台</span></div>
+  <input id="projTitle" class="proj-title" placeholder="未命名作品" value="未命名作品">
+  <div class="top-actions">
+    <span id="saveState" class="save-state">已保存</span>
+    <button id="aiSettingsBtn" class="btn ghost" type="button">AI 设置</button>
+    <button id="themeBtn" class="btn ghost" type="button">暗色</button>
+    <button id="exportBtn" class="btn ghost" type="button">导出</button>
+    <button id="resetBtn" class="btn ghost danger" type="button">清空</button>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="side">
+    <button class="nav-item active" data-view="outline" type="button">
+      <span class="nav-ico"></span>大纲拆解
+    </button>
+    <button class="nav-item" data-view="chars" type="button">
+      <span class="nav-ico"></span>人物图谱
+    </button>
+    <button class="nav-item" data-view="names" type="button">
+      <span class="nav-ico"></span>取名工具
+    </button>
+    <button class="nav-item" data-view="write" type="button">
+      <span class="nav-ico"></span>码字台
+    </button>
+    <button class="nav-item" data-view="foreshadow" type="button">
+      <span class="nav-ico"></span>伏笔账本
+    </button>
+    <button class="nav-item" data-view="analyze" type="button">
+      <span class="nav-ico"></span>拆书分析
+    </button>
+    <button class="nav-item" data-view="rank" type="button">
+      <span class="nav-ico"></span>竞品榜
+    </button>
+    <div class="side-stats" id="sideStats"></div>
+  </nav>
+
+  <main class="main">
+
+    <!-- 大纲 -->
+    <section id="view-outline" class="view active">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>一句话到一百万</h2>
+          <p class="hint">把你脑子里的 200 字写下来，系统按“总纲 → 卷纲 → 章纲”三级拆到单章任务卡。</p>
+        </div>
+        <textarea id="rawOutline" class="raw-input" rows="6" placeholder="例如：外卖员陈砚每天送单到凌晨，某天他发现自己能看见每个收件人头顶的倒计时。他想救人，却发现自己每提醒一个人，自己的倒计时就少一天。而他送的第一单，收件人写的是他自己的名字。"></textarea>
+        <div class="param-grid">
+          <label>题材
+            <select id="pGenre">
+              <option value="都市脑洞">都市脑洞</option>
+              <option value="都市高武">都市高武</option>
+              <option value="悬疑脑洞">悬疑脑洞</option>
+              <option value="玄幻脑洞">玄幻脑洞</option>
+              <option value="东方仙侠">东方仙侠</option>
+              <option value="历史古代">历史古代</option>
+              <option value="西方奇幻">西方奇幻</option>
+              <option value="年代情感">年代情感</option>
+              <option value="古言宅斗">古言宅斗</option>
+              <option value="现代言情">现代言情</option>
+            </select>
+          </label>
+          <label>总字数（万）
+            <input id="pTotal" type="number" value="100" min="10" max="500" step="10">
+          </label>
+          <label>单章字数
+            <input id="pChapWords" type="number" value="2000" min="1500" max="4000" step="100">
+          </label>
+          <label>分卷数
+            <input id="pVols" type="number" value="6" min="3" max="10" step="1">
+          </label>
+          <label>爽点密度
+            <select id="pDensity">
+              <option value="3">3 章一小爽（推荐）</option>
+              <option value="2">2 章一小爽（极快）</option>
+              <option value="5">5 章一小爽（舒缓）</option>
+            </select>
+          </label>
+          <label>主角名
+            <input id="pHero" type="text" placeholder="留空自动取" maxlength="6">
+          </label>
+        </div>
+        <div class="row-actions">
+          <button id="aiGenBtn" class="btn primary" type="button">AI 拆解为完整大纲</button>
+          <button id="genBtn" class="btn" type="button">离线快速版</button>
+          <button id="demoBtn" class="btn ghost" type="button">填充示例</button>
+          <span id="genInfo" class="hint"></span>
+        </div>
+      </div>
+
+      <div id="outlineResult" class="outline-result hidden">
+        <div class="panel">
+          <div class="panel-head">
+            <h3>核心设定</h3>
+            <button id="aiCheckBtn" class="btn small ghost" type="button">AI 体检</button>
+          </div>
+          <div id="coreCard" class="core-card"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3>卷纲</h3>
+            <p class="hint">每卷是一个独立小目标，卷末必须完成一次格局升级。</p>
+          </div>
+          <div id="volumeList" class="volume-list"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3>章纲</h3>
+            <div class="filter-row">
+              <select id="chapterVolFilter"></select>
+              <span class="hint" id="chapterCount"></span>
+            </div>
+          </div>
+          <div id="chapterTable" class="chapter-table"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3>节奏体检</h3>
+            <p class="hint">每格一章，颜色越深爽点越强。出现连续灰格就是“断期待”区间，需要补事件。</p>
+          </div>
+          <div id="beatMap" class="beat-map"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 人物 -->
+    <section id="view-chars" class="view">
+      <div class="char-layout">
+        <div class="panel char-list-panel">
+          <div class="panel-head">
+            <h3>人物</h3>
+            <button id="addCharBtn" class="btn small" type="button">新增</button>
+          </div>
+          <div class="chapter-filter">
+            <label>截至第 <b id="chFilterVal">500</b> 章
+              <input id="chFilter" type="range" min="1" max="500" value="500">
+            </label>
+            <p class="hint">拖动可看人物登场、关系生灭的变化。</p>
+          </div>
+          <ul id="charList" class="char-list"></ul>
+        </div>
+
+        <div class="panel graph-panel">
+          <div class="panel-head">
+            <h3>关系图谱</h3>
+            <button id="autoLayoutBtn" class="btn small ghost" type="button">重排</button>
+          </div>
+          <div class="graph-wrap">
+            <svg id="graphSvg" class="graph-svg" viewBox="0 0 900 520" preserveAspectRatio="xMidYMid meet"></svg>
+            <div id="graphTip" class="graph-tip">点击节点查看与编辑，拖动可调整位置</div>
+          </div>
+          <div class="legend" id="graphLegend"></div>
+        </div>
+
+        <div class="panel char-edit-panel">
+          <div class="panel-head"><h3 id="charEditTitle">人物卡</h3></div>
+          <div id="charForm" class="char-form"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 取名 -->
+    <section id="view-names" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>取名工具</h2>
+          <p class="hint">先定偏好，再批量出。生成结果可直接收藏进人物库。</p>
+        </div>
+        <div class="name-tabs" id="nameTabs">
+          <button class="tab active" data-kind="person" type="button">人名</button>
+          <button class="tab" data-kind="family" type="button">家族</button>
+          <button class="tab" data-kind="sectline" type="button">宗门谱系</button>
+          <button class="tab" data-kind="place" type="button">地名</button>
+          <button class="tab" data-kind="sect" type="button">宗门名</button>
+          <button class="tab" data-kind="skill" type="button">功法招式</button>
+          <button class="tab" data-kind="org" type="button">组织公司</button>
+          <button class="tab" data-kind="title" type="button">书名</button>
+        </div>
+        <div id="namePrefs" class="param-grid"></div>
+        <div class="row-actions">
+          <button id="genNameBtn" class="btn" type="button">生成 24 个</button>
+          <button id="aiNameBtn" class="btn primary" type="button">AI 生成</button>
+          <span id="nameInfo" class="hint"></span>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>结果</h3><span class="hint">点一下复制</span></div>
+        <div id="nameResults" class="name-grid"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>收藏</h3><button id="clearFavBtn" class="btn small ghost" type="button">清空</button></div>
+        <div id="favList" class="fav-list"></div>
+      </div>
+    </section>
+
+    <!-- 码字 -->
+    <section id="view-write" class="view">
+      <div class="write-layout">
+        <div class="panel tree-panel">
+          <div class="panel-head"><h3>目录</h3></div>
+          <div id="chapterTree" class="chapter-tree"></div>
+        </div>
+        <div class="panel editor-panel">
+          <div class="panel-head">
+            <h3 id="editorTitle">选择一章开始写</h3>
+            <div class="editor-actions">
+              <span id="wordCount" class="hint">0 字</span>
+              <button id="aiWriteBtn" class="btn small" type="button">AI 续写</button>
+            </div>
+          </div>
+          <textarea id="editor" class="editor" placeholder="正文写在这里。右侧是本章任务卡，别写偏。"></textarea>
+        </div>
+        <div class="panel context-panel">
+          <div class="panel-head"><h3>本章任务卡</h3></div>
+          <div id="chapterContext" class="context-body">
+            <p class="hint">先在「大纲拆解」生成章纲，再来这里写。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 伏笔 -->
+    <section id="view-foreshadow" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>伏笔账本</h2>
+          <p class="hint">埋了不回收，就是烂尾的起点。这里管埋设与回收的账。</p>
+        </div>
+        <div class="fs-form">
+          <input id="fsTitle" type="text" placeholder="伏笔内容，如：主角父亲留下的旧怀表">
+          <input id="fsPlant" type="number" placeholder="埋设章" min="1">
+          <input id="fsPay" type="number" placeholder="计划回收章" min="1">
+          <button id="addFsBtn" class="btn primary" type="button">记一笔</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>台账</h3><span id="fsStat" class="hint"></span></div>
+        <div id="fsList" class="fs-list"></div>
+      </div>
+    </section>
+
+    <!-- 拆书 -->
+    <section id="view-analyze" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>拆书分析</h2>
+          <p class="hint">上传一本 txt / docx，反推它的章节结构、节奏曲线、人物配置和钩子密度。学爆款靠拆，不靠感觉。</p>
+        </div>
+        <div id="dropZone" class="drop-zone">
+          <p class="dz-main">把小说文件拖到这里</p>
+          <p class="dz-sub">支持 .txt / .md / .docx，也可以点击选择</p>
+          <input id="fileInput" type="file" accept=".txt,.md,.docx" hidden>
+        </div>
+        <div id="anInfo" class="hint" style="margin-top:10px"></div>
+      </div>
+
+      <div id="anResult" class="hidden">
+        <div class="panel">
+          <div class="panel-head">
+            <h3>概览</h3>
+            <button id="aiAnalyzeBtn" class="btn small" type="button">AI 重新拆解</button>
+          </div>
+          <div id="anMeta" class="core-card"></div>
+        </div>
+
+        <div id="anAiPanel" class="panel hidden">
+          <div class="panel-head">
+            <h3>AI 拆书结论</h3>
+            <div style="display:flex;gap:6px">
+              <button id="anApplyBtn" class="btn small" type="button">人物与关系入库</button>
+              <button id="anCopyBtn" class="btn small ghost" type="button">复制全文</button>
+            </div>
+          </div>
+          <div id="anAi"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3>节奏曲线</h3>
+            <span class="hint">每根柱一章，高度 = 爽点 + 钩子综合强度</span>
+          </div>
+          <div id="anRhythm" class="rhythm"></div>
+          <div class="beat-legend">
+            <span><i style="background:#639922"></i>强</span>
+            <span><i style="background:#97C459"></i>中</span>
+            <span><i style="background:#C0DD97"></i>弱</span>
+            <span><i style="background:#F09595"></i>连续低谷</span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3>章节明细</h3>
+            <span id="anChCount" class="hint"></span>
+          </div>
+          <div id="anChapters" class="chapter-table"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3>人物</h3>
+            <span class="hint">按对话归属统计，不是全文词频</span>
+          </div>
+          <div id="anChars" class="an-chars"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 竞品榜 -->
+    <section id="view-rank" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>竞品榜</h2>
+          <p class="hint">番茄男频阅读榜 + 起点月票榜各取前 10。看别人怎么起名、怎么开局、怎么把卖点写进一句话。</p>
+        </div>
+        <div id="rankTabs" class="rank-tabs"></div>
+        <div id="rankMeta" class="rank-meta"></div>
+        <div id="rankDist" class="rank-dist"></div>
+      </div>
+      <div id="rankBench" class="panel hidden"></div>
+      <div id="rankList" class="rank-list"></div>
+      <div class="panel">
+        <p class="hint">
+          榜单口径：番茄按「在读人数」，起点按「月票」。热度数字为检索当日的第三方聚合值，会每天变。
+          标「推断」的条目是按书名、分类与榜单位置推的，没读原文 —— 真要学，点「去拆它的原文」把书丢进拆书分析。
+        </p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div id="aiModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>AI 设置</h3>
+      <button class="modal-x" data-close="aiModal" type="button">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="aiStatus" class="ai-status"></div>
+      <label class="modal-field">服务商
+        <select id="aiProvider">
+          <option value="deepseek">DeepSeek（api.deepseek.com）</option>
+          <option value="openrouter">OpenRouter（openrouter.ai）</option>
+        </select>
+      </label>
+      <label class="modal-field">模型
+        <input id="aiModel" list="aiModelList" placeholder="deepseek-chat" autocomplete="off">
+        <datalist id="aiModelList"></datalist>
+      </label>
+      <label class="modal-field">API Key
+        <input id="aiKey" type="password" placeholder="sk-..." autocomplete="off">
+      </label>
+      <p class="hint">Key 只写进本机 server.js 的 <code>.llm-config.json</code>（权限 600），不存浏览器、不经过第三方。留空保存则只更新模型选择。</p>
+      <div class="row-actions">
+        <button id="aiSaveBtn" class="btn primary" type="button">保存</button>
+        <button id="aiTestBtn" class="btn" type="button">测试连接</button>
+        <span id="aiMsg" class="hint"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI 任务：常驻右下角，不挡操作，可切视图后台跑 -->
+<div id="jobDock" class="job-dock hidden">
+  <div class="jd-head">
+    <span id="jobDot" class="jd-dot"></span>
+    <span id="jobTitle" class="jd-title">AI 正在生成</span>
+    <span id="jobPct" class="jd-pct">0%</span>
+    <button id="jobMin" class="jd-icon" type="button" title="收起 / 展开">–</button>
+    <button id="jobClose" class="jd-icon" type="button" title="关闭">×</button>
+  </div>
+  <div class="job-track"><div id="jobBar" class="job-fill"></div></div>
+  <div id="jobStage" class="jd-stage">准备中</div>
+  <div class="jd-body">
+    <ol id="jobSteps" class="job-steps"></ol>
+    <div id="jobStats" class="job-stats"></div>
+    <div id="jobError" class="job-error hidden"></div>
+    <div id="jobResult" class="job-result hidden"></div>
+    <details id="jobDetailWrap" class="job-detail">
+      <summary>原始返回 · 排查用</summary>
+      <pre id="jobLog" class="job-log"></pre>
+    </details>
+    <div class="row-actions">
+      <button id="jobCancel" class="btn small" type="button">中断</button>
+      <button id="jobRetry" class="btn small hidden" type="button">用非流式重试</button>
+      <button id="jobApply" class="btn small primary hidden" type="button">应用结果</button>
+      <span id="jobInfo" class="hint"></span>
+    </div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="ai.js"></script>
+<script src="analyze.js"></script>
+<script src="rank.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
