@@ -11,7 +11,9 @@ cd novel-studio
 node server.js
 ```
 
-打开 http://127.0.0.1:8931 ，右上角「AI 设置」填 Key。
+打开 http://127.0.0.1:8931 ，右上角「AI 设置」填 Key（会写入 `.llm-config.json`，权限 600，已在 `.gitignore` 里，不会被提交）。
+
+> 克隆下来跑：先 `cp .llm-config.example.json .llm-config.json`，或直接用环境变量 `DEEPSEEK_API_KEY=sk-xxx node server.js`。
 
 **方式二（纯本地，无 AI）**
 
