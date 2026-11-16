@@ -2,6 +2,18 @@
 
 一个可离线运行的网文写作辅助原型。把 200 字灵感拆成三级大纲、管人物关系、批量取名、按章写正文。
 
+![人物图谱：关系带方向、起止章，可随章节回看演化](screenshots/graph-timeline.png)
+
+<details>
+<summary>其他界面截图（竞品榜 / 拆书 / AI 任务卡片）</summary>
+
+| | |
+|---|---|
+| ![竞品榜：番茄男频阅读榜 TOP10](screenshots/rank-fanqie.png) | ![照竞品的赛道开新书](screenshots/rank-to-outline.png) |
+| ![AI 任务卡片：进度、步骤、统计](screenshots/ai-job-dock.png) | ![失败诊断：原因、建议、技术细节](screenshots/ai-job-error.png) |
+
+</details>
+
 ## 运行
 
 **方式一（推荐，含 AI 能力）**
