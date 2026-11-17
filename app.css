@@ -78,6 +78,7 @@ p { margin: 0; }
 .proj-title:focus { outline: none; border-color: var(--accent2); background: var(--panel2); }
 .top-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .save-state { font-size: 11px; color: var(--text3); margin-right: 4px; }
+.save-state.bad { color: #A32D2D; font-weight: 600; }
 
 /* ---------- 按钮 ---------- */
 .btn {

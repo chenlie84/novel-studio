@@ -5,7 +5,7 @@ const $ = (id) => document.getElementById(id);
 const rnd = (a) => a[Math.floor(Math.random() * a.length)];
 const ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function cn(n) {
   n = Math.round(n);
@@ -35,37 +35,79 @@ function freshState() {
 
 let S = freshState();
 
-function load() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return;
-    const o = JSON.parse(raw);
-    S = Object.assign(freshState(), o);
-    S.project = Object.assign(freshState().project, o.project || {});
-    S.ui = Object.assign(freshState().ui, o.ui || {});
-    S.rank = Object.assign(freshState().rank, o.rank || {});
-    if (!Array.isArray(S.rank.bench)) S.rank.bench = [];
-    if (!Array.isArray(S.rels)) S.rels = [];
-    ensureRelIds();
-    S.rels.forEach((r) => { if (r.fromCh == null) r.fromCh = 1; });
-  } catch (e) { console.warn('读取失败', e); }
+/* 把任意来源（localStorage / 导入的备份）的对象规整成合法状态 */
+function normalizeState(o) {
+  const base = freshState();
+  const st = Object.assign(base, o);
+  st.project = Object.assign(freshState().project, o.project || {});
+  st.ui = Object.assign(freshState().ui, o.ui || {});
+  st.rank = Object.assign(freshState().rank, o.rank || {});
+  ['volumes', 'chapters', 'chars', 'rels', 'fs', 'favNames'].forEach((k) => { if (!Array.isArray(st[k])) st[k] = []; });
+  if (!st.texts || typeof st.texts !== 'object' || Array.isArray(st.texts)) st.texts = {};
+  if (!Array.isArray(st.rank.bench)) st.rank.bench = [];
+  return st;
 }
 
+function load() {
+  let raw = null;
+  try { raw = localStorage.getItem(KEY); } catch (e) { return; }
+  if (!raw) return;
+  try {
+    S = normalizeState(JSON.parse(raw));
+    ensureRelIds();
+    S.rels.forEach((r) => { if (r.fromCh == null) r.fromCh = 1; });
+  } catch (e) {
+    /* 读不出来：先把原文原样留一份，否则下一次 save() 会把唯一的残骸也覆盖掉 */
+    console.warn('读取失败', e);
+    try { localStorage.setItem(KEY + '.corrupt', raw); } catch (e2) {}
+    S = freshState();
+    LOAD_FAILED = true;
+  }
+}
+
+let LOAD_FAILED = false;
 let saveTimer = null;
+let savePending = false;
+let saveDisabled = false;     // 「清空」时置位，避免 beforeunload 把刚清掉的数据又写回去
+
+function writeNow() {
+  if (saveDisabled) return;
+  clearTimeout(saveTimer);
+  savePending = false;
+  const t = $('saveState');
+  try {
+    localStorage.setItem(KEY, JSON.stringify(S));
+    if (t) {
+      t.textContent = '已保存 ' + new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) +
+        (LOAD_FAILED ? ' · 旧存档损坏，原文已另存' : '');
+      t.classList.toggle('bad', LOAD_FAILED);
+    }
+  } catch (e) {
+    const quota = e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014);
+    if (t) {
+      t.textContent = quota ? '存储已满！请立即点「备份」' : '保存失败，请点「备份」';
+      t.classList.add('bad');
+    }
+    console.warn('保存失败', e);
+  }
+}
+
 function save() {
   if (typeof ensureRelIds === 'function') ensureRelIds();
   clearTimeout(saveTimer);
+  savePending = true;
   const t = $('saveState');
   if (t) t.textContent = '保存中…';
-  saveTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(S));
-      if (t) t.textContent = '已保存 ' + new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-    } catch (e) {
-      if (t) t.textContent = '保存失败';
-    }
-  }, 260);
+  saveTimer = setTimeout(writeNow, 260);
 }
+
+/* 260ms 防抖期间关页签 / 切走，最后几个字会丢——离开前同步落盘 */
+function flushSave() { if (savePending) writeNow(); }
+window.addEventListener('pagehide', flushSave);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSave(); });
+
+/* 申请"持久存储"：浏览器清理空间时不会优先动这份数据（用户拒绝或不支持也无妨） */
+try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
 
 /* ================= 关键词与文本工具 ================= */
 
@@ -105,6 +147,12 @@ function extractKeys(text, n) {
 
 function fillTpl(str, ctx) {
   return String(str).replace(/\{(\w+)\}/g, (m, k) => (ctx[k] == null ? m : ctx[k]));
+}
+
+/* 章标题：模板里的 {n} 要填上，否则章表里会出现字面量「第{n}条规矩」 */
+function chapterTitle(no) {
+  const tpl = DATA.chapterTitleTpl[no % DATA.chapterTitleTpl.length];
+  return fillTpl(tpl, { n: cn(Math.ceil(no / DATA.chapterTitleTpl.length)) });
 }
 
 function oneLine(raw, keys) {
@@ -239,6 +287,7 @@ function beatFunc(vi, i, count, density) {
 function buildOutline() {
   const raw = $('rawOutline').value.trim();
   if (raw.length < 20) { alert('大纲太短了，至少写 20 个字，把人物、处境、异常各说一句。'); return; }
+  if (S.chapters.length && !confirmOverwriteText()) return;
 
   const genre = $('pGenre').value;
   const totalWan = clamp(+$('pTotal').value || 100, 10, 500);
@@ -317,7 +366,7 @@ function buildOutline() {
       };
       chapters.push({
         no, volId: v.id, func, level: BEAT_LEVEL[func],
-        title: DATA.chapterTitleTpl[no % DATA.chapterTitleTpl.length],
+        title: chapterTitle(no),
         pov: func === 'climax' && vi > 2 ? '双视角' : hero,
         goal: fillTpl(t.goal, ctx),
         obstacle: fillTpl(t.obstacle, ctx),
@@ -1484,9 +1533,10 @@ function renderContext(c) {
 
 function addForeshadow() {
   const title = $('fsTitle').value.trim();
-  const plant = +$('fsPlant').value || 1;
-  const pay = +$('fsPay').value || plant + 30;
+  const plant = Math.max(1, Math.round(+$('fsPlant').value || 1));
+  const pay = Math.max(1, Math.round(+$('fsPay').value || plant + 30));
   if (!title) { alert('先写伏笔内容'); return; }
+  if (pay < plant) { alert('回收章不能早于埋设章（第 ' + plant + ' 章埋的伏笔，不可能在第 ' + pay + ' 章回收）。'); return; }
   S.fs.push({ id: 'f_' + Date.now(), title, plantCh: plant, payCh: pay, done: false });
   $('fsTitle').value = ''; $('fsPlant').value = ''; $('fsPay').value = '';
   save(); renderFs();
@@ -1636,6 +1686,64 @@ function exportProject() {
   a.download = (S.project.title || '小说项目') + '.md';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+}
+
+/* ================= 备份 / 导入 =================
+   数据只在浏览器 localStorage 里。Markdown 导出是给人读的，导不回来；
+   这里的 JSON 备份是完整状态，可以原样导入，换浏览器 / 清缓存前先点一下。 */
+
+const BACKUP_MAGIC = 'yantai-novel-backup';
+
+function backupFileName() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+  const safe = (S.project.title || '小说项目').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40);
+  return `${safe}-备份-${stamp}.json`;
+}
+
+function exportBackup() {
+  const payload = { magic: BACKUP_MAGIC, version: 1, savedAt: new Date().toISOString(), state: S };
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = backupFileName();
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+}
+
+function importBackupFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onerror = () => alert('读取文件失败');
+  reader.onload = () => {
+    let o;
+    try { o = JSON.parse(String(reader.result)); } catch (e) { alert('这不是有效的备份文件（JSON 解析失败）'); return; }
+    if (!o || o.magic !== BACKUP_MAGIC || !o.state || typeof o.state !== 'object') {
+      alert('这不是砚台的备份文件。');
+      return;
+    }
+    const words = Object.values(o.state.texts || {}).reduce((a, t) => a + String(t || '').replace(/\s/g, '').length, 0);
+    const cur = Object.values(S.texts).reduce((a, t) => a + String(t || '').replace(/\s/g, '').length, 0);
+    const msg = `导入备份《${(o.state.project && o.state.project.title) || '未命名'}》\n` +
+      `· 备份里：${(o.state.chapters || []).length} 章纲，正文 ${words} 字\n` +
+      `· 当前项目：${S.chapters.length} 章纲，正文 ${cur} 字\n\n` +
+      '导入会【覆盖】当前项目。继续？（建议先点「备份」保存当前内容）';
+    if (!confirm(msg)) return;
+    S = normalizeState(o.state);
+    ensureRelIds();
+    S.rels.forEach((r) => { if (r.fromCh == null) r.fromCh = 1; });
+    writeNow();
+    location.reload();
+  };
+  reader.readAsText(file);
+}
+
+/* 重新生成大纲会重排章号，而正文是按章号存的 */
+function confirmOverwriteText() {
+  const words = Object.values(S.texts).reduce((a, t) => a + String(t || '').replace(/\s/g, '').length, 0);
+  if (!words) return true;
+  return confirm(`当前已写了约 ${words} 字正文。\n\n重新生成大纲后，章号可能与现有正文错位（正文不会被删，但会挂在新的同号章节下）。\n建议先点右上角「备份」。\n\n仍要重新生成？`);
 }
 
 /* ================= AI 接入 ================= */
@@ -1950,6 +2058,11 @@ function setJobInfo(t) { Job.info(t); }
    cfg = { title, steps, expectChars, messages(), params, parse(text), apply(data, text),
            doneText, closeAfter, openLog } */
 async function runAiJob(cfg) {
+  /* 任务卡片和 AI.currentCtrl 都是全局唯一的：并发起第二个任务，第一个就再也中断不了，卡片也会串 */
+  if (Job.t0 > 0 && !Job.finished) {
+    alert('已经有一个 AI 任务在跑（见右下角卡片），等它结束或先点「中断」。');
+    return { ok: false, error: aiError('已有 AI 任务在运行', { kind: 'busy' }) };
+  }
   const steps = cfg.steps || ['连接本地服务', '提交请求', '接收模型输出', '解析结果', '写入项目'];
   const expectChars = Math.max(200, cfg.expectChars || 1500);
   const limit = cfg.logMax || 4000;
@@ -2044,7 +2157,7 @@ function makeChapter(no, vol, inIdx, count, pack, hero, enemy, ally, density, ch
   };
   return {
     no, volId: vol.id, func, level: BEAT_LEVEL[func],
-    title: DATA.chapterTitleTpl[no % DATA.chapterTitleTpl.length],
+    title: chapterTitle(no),
     pov: hero,
     goal: fillTpl(t.goal, c), obstacle: fillTpl(t.obstacle, c),
     turn: fillTpl(t.turn, c), payoff: fillTpl(t.payoff, c), hook: fillTpl(t.hook, c),
@@ -2174,6 +2287,7 @@ function applyAiOutline(data, ctx) {
 async function aiGenerateOutline() {
   const raw = $('rawOutline').value.trim();
   if (raw.length < 20) { alert('大纲太短了，至少 20 个字，把人物、处境、异常各说一句。'); return; }
+  if (S.chapters.length && !confirmOverwriteText()) return;
   if (!(await ensureAI())) return;
 
   const ctx = {
@@ -2236,11 +2350,17 @@ async function aiContinue() {
       ],
       params: { temperature: 0.9, maxTokens: Math.min(8000, Math.ceil(ctx.words * 2.2)) },
       apply: (raw) => {
+        /* 生成要 40 秒左右，期间用户可能已经切到别的章。
+           正文一律以「发起时的章号 no」为准写进 S.texts[no]，编辑器只在仍停留在这一章时才刷新，
+           否则会把别章的内容串进来、再把这章原文覆盖掉。 */
         const clean = String(raw || '').trim();
-        const old = $('editor').value.trim();
-        $('editor').value = old ? old + '\n\n' + clean : clean;
-        S.texts[no] = $('editor').value;
-        updateWordCount(); renderSideStats(); save();
+        const old = (S.texts[no] || '').trim();
+        S.texts[no] = old ? old + '\n\n' + clean : clean;
+        if (S.ui.selChapter === no) {
+          $('editor').value = S.texts[no];
+          updateWordCount();
+        }
+        renderSideStats(); renderTree(); save();
       },
       doneText: '已写入编辑器',
       closeAfter: 400,
@@ -2294,9 +2414,14 @@ function bindEvents() {
   $('projTitle').oninput = () => { S.project.title = $('projTitle').value; save(); };
   $('themeBtn').onclick = () => { S.theme = S.theme === 'dark' ? 'light' : 'dark'; applyTheme(); save(); };
   $('exportBtn').onclick = exportProject;
+  $('backupBtn').onclick = exportBackup;
+  $('importBtn').onclick = () => $('importInput').click();
+  $('importInput').onchange = (e) => { importBackupFile(e.target.files[0]); e.target.value = ''; };
   $('resetBtn').onclick = () => {
-    if (!confirm('清空当前项目的全部数据（大纲、人物、正文）？此操作不可撤销。')) return;
-    localStorage.removeItem(KEY);
+    if (!confirm('清空当前项目的全部数据（大纲、人物、正文）？此操作不可撤销。\n\n建议先点「备份」。')) return;
+    saveDisabled = true;                 // 否则 pagehide 的 flushSave 会把清掉的数据又写回去
+    clearTimeout(saveTimer);
+    try { localStorage.removeItem(KEY); } catch (e) {}
     location.reload();
   };
 
@@ -2443,6 +2568,11 @@ function init() {
   renderAll();
   switchView(S.ui.view || 'outline');
   $('saveState').textContent = S.chapters.length ? '已载入本地项目' : '新项目';
+  if (LOAD_FAILED) {
+    $('saveState').textContent = '读档失败，原数据已另存';
+    $('saveState').classList.add('bad');
+    setTimeout(() => alert('本地存档损坏，读不出来。\n\n原始数据没有丢：已原样保存在浏览器的 ' + KEY + '.corrupt 里（开发者工具 → Application → Local Storage 可取出）。\n当前显示的是空白项目，在你确认之前请不要大量编辑。'), 100);
+  }
 
   loadAiPref();
   AI.health().then(() => { autoPickProvider(); updateAiBadge(); renderAiStatus(); });

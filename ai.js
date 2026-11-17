@@ -145,6 +145,36 @@ const AI = {
       const dec = new TextDecoder();
       let buf = '';
       let full = '';
+
+      const handleLine = (line) => {
+        const s = line.trim();
+        if (!s) return;
+        run.rawLines++;
+        if (!s.startsWith('data:')) return;
+        const data = s.slice(5).trim();
+        if (data === '[DONE]') { run.sawDone = true; return; }
+        if (!data) return;
+        try {
+          const j = JSON.parse(data);
+          if (j.usage) run.usage = j.usage;
+          const ch = (j.choices && j.choices[0]) || {};
+          const d = ch.delta || {};
+          const piece = d.content || '';
+          const think = d.reasoning_content || d.reasoning || '';
+          if (think) run.reasonChars += String(think).length;
+          if (ch.finish_reason) run.finish = ch.finish_reason;
+          if (piece) {
+            run.chunks++;
+            run.chars += piece.length;
+            full += piece;
+            if (run.sample.length < 600) run.sample += piece;
+            onDelta && onDelta(piece, full);
+          }
+        } catch (e) {
+          if (run.rawLines < 6) run.sample += '‹无法解析的行› ' + data.slice(0, 120) + '\n';
+        }
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -152,35 +182,11 @@ const AI = {
         buf += dec.decode(value, { stream: true });
         const lines = buf.split('\n');
         buf = lines.pop();
-        for (const line of lines) {
-          const s = line.trim();
-          if (!s) continue;
-          run.rawLines++;
-          if (!s.startsWith('data:')) continue;
-          const data = s.slice(5).trim();
-          if (data === '[DONE]') { run.sawDone = true; continue; }
-          if (!data) continue;
-          try {
-            const j = JSON.parse(data);
-            if (j.usage) run.usage = j.usage;
-            const ch = (j.choices && j.choices[0]) || {};
-            const d = ch.delta || {};
-            const piece = d.content || '';
-            const think = d.reasoning_content || d.reasoning || '';
-            if (think) run.reasonChars += String(think).length;
-            if (ch.finish_reason) run.finish = ch.finish_reason;
-            if (piece) {
-              run.chunks++;
-              run.chars += piece.length;
-              full += piece;
-              if (run.sample.length < 600) run.sample += piece;
-              onDelta && onDelta(piece, full);
-            }
-          } catch (e) {
-            if (run.rawLines < 6) run.sample += '‹无法解析的行› ' + data.slice(0, 120) + '\n';
-          }
-        }
+        lines.forEach(handleLine);
       }
+      /* 流结束时最后一行可能没有换行：不处理会丢掉末尾的 usage / finish_reason / 最后几个字 */
+      buf += dec.decode();
+      if (buf) handleLine(buf);
       run.ms = Date.now() - t0;
 
       if (!full) {

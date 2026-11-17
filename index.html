@@ -15,7 +15,10 @@
     <span id="saveState" class="save-state">已保存</span>
     <button id="aiSettingsBtn" class="btn ghost" type="button">AI 设置</button>
     <button id="themeBtn" class="btn ghost" type="button">暗色</button>
-    <button id="exportBtn" class="btn ghost" type="button">导出</button>
+    <button id="backupBtn" class="btn ghost" type="button" title="完整备份（JSON），可原样导入">备份</button>
+    <button id="importBtn" class="btn ghost" type="button" title="从备份文件恢复，会覆盖当前项目">导入</button>
+    <input id="importInput" type="file" accept=".json,application/json" hidden>
+    <button id="exportBtn" class="btn ghost" type="button" title="导出为 Markdown，供阅读与投稿，不能再导回">导出 .md</button>
     <button id="resetBtn" class="btn ghost danger" type="button">清空</button>
   </div>
 </header>

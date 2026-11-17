@@ -7,7 +7,7 @@ const AN_TEXT = {
   speakAfter: /[”"]\s*([\u4e00-\u9fa5]{2,3}?)(?=说道|说着|笑道|问道|说|道|问|答|笑|摇头|点头|皱眉|叹气)/g,
   actionColon: /([\u4e00-\u9fa5]{2,3}?)[^\n“”"：:]{0,12}[：:]\s*[“"]/g,
   colon: /([\u4e00-\u9fa5]{2,3})[：:]\s*[“"]/g,
-  chapter: /^[ \t]*(第[0-9零一二三四五六七八九十百千两〇]{1,8}[章节回卷][^\n]{0,40}|[0-9]{1,4}[、.][ \t]*[^\n]{0,30}|Chapter[ \t]+[0-9]{1,4}[^\n]{0,30}|楔子|序章|引子|尾声|后记)[ \t]*$/gim,
+  chapter: /^[ \t]*(第[0-9零一二三四五六七八九十百千两〇]{1,8}[章节回卷][^\n]{0,40}|[0-9]{1,4}[、.](?![0-9])[ \t]*[^\n]{0,30}|Chapter[ \t]+[0-9]{1,4}[^\n]{0,30}|楔子|序章|引子|尾声|后记)[ \t]*$/gim,
   pay: /(打脸|震惊|不可能|跪下|废物|逆袭|突破|暴涨|碾压|耳光|闭嘴|傻眼|哗然|倒吸|天赋|觉醒|最强|秒杀|反杀|翻盘|满级|签到|奖励|金手指|瞪大|脸色一变|颤抖|愣住|呆住|失声|惊呼|炸开|沸腾|沸腾了|不可思议|全场|冷笑)/g
 };
 
@@ -35,11 +35,19 @@ async function readDocx(file) {
   const xml = files[key];
   const text = xml
     .replace(/<w:br\s*\/>/g, '\n')
+    .replace(/<w:tab\s*\/>/g, '\t')
     .replace(/<\/w:p>/g, '\n')
     .replace(/<[^>]+>/g, '')
+    .replace(/&#x([0-9a-fA-F]+);/g, (m, h) => safeFromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (m, d) => safeFromCodePoint(parseInt(d, 10)))
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
   return text;
+}
+
+function safeFromCodePoint(n) {
+  try { return String.fromCodePoint(n); } catch (e) { return ''; }
 }
 
 async function unzipDocx(u8) {
@@ -228,7 +236,7 @@ function renderAnalysis(r) {
     ['平均章字数', r.avgWords.toLocaleString() + ' 字'],
     ['对话占比', Math.round(r.dialogue * 100) + '%'],
     ['爽点密度', r.payAvg + ' / 100']
-  ].map(([k, v]) => `<div class="core-item"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+  ].map(([k, v]) => `<div class="core-item"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join('');
 
   /* 节奏曲线 */
   const bars = [];
@@ -238,7 +246,7 @@ function renderAnalysis(r) {
     lowRun = score < 32 ? lowRun + 1 : 0;
     const cls = lowRun >= 3 ? 'gap' : score >= 65 ? 's3' : score >= 40 ? 's2' : 's1';
     const h = Math.max(6, Math.round(10 + Math.sqrt(score / 100) * 140));
-    bars.push(`<div class="bar ${cls}" style="height:${h}px" title="第${c.no}章 ${c.title}｜爽点 ${c.payoff}｜钩子 ${c.hook}"></div>`);
+    bars.push(`<div class="bar ${cls}" style="height:${h}px" title="${esc(`第${c.no}章 ${c.title}｜爽点 ${c.payoff}｜钩子 ${c.hook}`)}"></div>`);
   });
   document.getElementById('anRhythm').innerHTML = bars.join('') || '<div class="rhythm-empty">没有数据</div>';
 
